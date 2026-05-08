@@ -1,18 +1,7 @@
-const { createClient } = require("@supabase/supabase-js");
+const axios = require("axios");
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
-
-let supabase = null;
-
-if (SUPABASE_URL && SUPABASE_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-} else {
-  console.warn(
-    "[financialService] SUPABASE_URL/SUPABASE_KEY não configurados — lançamentos não serão persistidos."
-  );
-}
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const CATEGORIAS = {
   mercado: ["mercado", "supermercado", "feira", "hortifruti", "açougue", "padaria"],
@@ -105,26 +94,37 @@ async function registrarGasto(number, descricaoBruta) {
     status: "pago"
   };
 
-  if (!supabase) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     console.log("[financialService] Lançamento (não persistido):", lancamento);
     return lancamento;
   }
 
-  const { data, error } = await supabase
-    .from("financeiro_lancamentos")
-    .insert(lancamento)
-    .select()
-    .single();
+  try {
+    const response = await axios.post(
+      `${SUPABASE_URL}/rest/v1/financeiro_lancamentos`,
+      lancamento,
+      {
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation"
+        }
+      }
+    );
 
-  if (error) {
+    if (Array.isArray(response.data)) {
+      return response.data[0] || lancamento;
+    }
+
+    return response.data || lancamento;
+  } catch (error) {
     console.log(
       "[financialService] Erro ao salvar em financeiro_lancamentos:",
-      error.message
+      error.response?.data || error.message
     );
     throw error;
   }
-
-  return data || lancamento;
 }
 
 module.exports = {
